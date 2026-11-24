@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execSync, spawnSync } from 'node:child_process';
-import { globSync, rmSync } from 'node:fs';
+import { cpSync, globSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
   findLatticeDir,
@@ -983,6 +984,41 @@ describe('valid-subdir-index', () => {
   it('passes when subdirectory index lists all entries', async () => {
     const errors = await checkIndex(latDir('valid-subdir-index'));
     expect(errors).toHaveLength(0);
+  });
+});
+
+describe('valid-index-same-name', () => {
+  // @lat: [[check-index#Passes when indexes list same-named files by qualified path]]
+  it('passes when indexes list same-named files by qualified path', async () => {
+    const errors = await checkIndex(latDir('valid-index-same-name'));
+    expect(errors).toHaveLength(0);
+
+    const { errors: mdErrors } = await checkMd(
+      latDir('valid-index-same-name'),
+    );
+    expect(mdErrors).toHaveLength(0);
+  });
+});
+
+describe('error-missing-same-name', () => {
+  // @lat: [[check-index#Suggests a qualified entry for a missing same-named file]]
+  it('suggests a qualified entry for a missing same-named file', async () => {
+    const errors = await checkIndex(latDir('error-missing-same-name'));
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain('is missing entries');
+    expect(errors[0].snippet).toContain('[[lat.md/alpha/spec]]');
+
+    const copied = mkdtempSync(join(tmpdir(), 'lat-index-same-name-'));
+    cpSync(caseDir('error-missing-same-name'), copied, { recursive: true });
+    rmSync(join(copied, 'lat.md', 'alpha', 'alpha.md'));
+    try {
+      const missingIndex = await checkIndex(join(copied, 'lat.md'));
+      expect(missingIndex).toHaveLength(1);
+      expect(missingIndex[0].message).toContain('missing index file');
+      expect(missingIndex[0].snippet).toContain('[[lat.md/alpha/spec]]');
+    } finally {
+      rmSync(copied, { recursive: true, force: true });
+    }
   });
 });
 

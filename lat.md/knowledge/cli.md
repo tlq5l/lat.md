@@ -133,6 +133,8 @@ Validate directory index files. Every directory inside `lat.md/` (including the 
 
 Each index file must contain a bullet list covering every visible file and subdirectory with a one-sentence description, using wiki links: `- [[name]] — description`. File entries omit the `.md` extension (e.g. `[[cli]]` not `[[cli.md]]`). Root example: `lat.md/lat.md`; subdirectory example: `lat.md/api/api.md`.
 
+When sibling folders reuse a file name, an index may qualify its own child as `[[api/spec]]` or `[[lat.md/api/spec]]`; missing-entry suggestions use the fully qualified form.
+
 Four checks:
 
 1. **Non-markdown files** — any file without a `.md` extension is flagged as an error (only markdown belongs in the checked directory)

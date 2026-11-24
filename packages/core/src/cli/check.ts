@@ -476,9 +476,55 @@ function entryToStem(name: string): string {
   return name.endsWith('.md') ? name.slice(0, -3) : name;
 }
 
+/**
+ * Resolve a folder-qualified index entry to the child stem it names.
+ * Entries outside the index's folder stay as written.
+ */
+function indexEntryToStem(
+  name: string,
+  prefix: string,
+  latticeBase: string,
+): string {
+  if (!name.includes('/')) return name;
+  for (const qualifiedPrefix of [prefix, `${latticeBase}/${prefix}`]) {
+    if (!name.startsWith(qualifiedPrefix)) continue;
+    const stem = name.slice(qualifiedPrefix.length);
+    if (stem && !stem.includes('/')) return stem;
+  }
+  return name;
+}
+
+/** Find file stems used by more than one Markdown file in the vault. */
+function duplicateFileStems(mdPaths: string[]): Set<string> {
+  const counts = new Map<string, number>();
+  for (const path of mdPaths) {
+    const stem = entryToStem(path.slice(path.lastIndexOf('/') + 1));
+    counts.set(stem, (counts.get(stem) ?? 0) + 1);
+  }
+  return new Set(
+    [...counts].filter(([, count]) => count > 1).map(([stem]) => stem),
+  );
+}
+
 /** Generate a bullet-list snippet for the given entry names. */
-function indexSnippet(entries: string[]): string {
-  return entries.map((e) => `- [[${entryToStem(e)}]] — <describe>`).join('\n');
+function indexSnippet(
+  entries: string[],
+  context: {
+    prefix: string;
+    latticeBase: string;
+    duplicateStems: ReadonlySet<string>;
+  },
+): string {
+  return entries
+    .map((entry) => {
+      const stem = entryToStem(entry);
+      const link =
+        entry.endsWith('.md') && context.duplicateStems.has(stem)
+          ? `${context.latticeBase}/${context.prefix}${stem}`
+          : stem;
+      return `- [[${link}]] — <describe>`;
+    })
+    .join('\n');
 }
 
 export type IndexError = {
@@ -536,6 +582,8 @@ export async function checkIndex(
 
   // Only .md files participate in index validation
   const mdPaths = allPaths.filter((p) => p.endsWith('.md'));
+  const latticeBase = basename(latticeDir);
+  const duplicateStems = duplicateFileStems(mdPaths);
 
   // Collect all directories to check (including root, represented as '')
   const dirs = new Set<string>(['']);
@@ -564,6 +612,8 @@ export async function checkIndex(
 
     if (children.length === 0) continue;
 
+    const snippetContext = { prefix, latticeBase, duplicateStems };
+
     // Check if the index file exists
     const indexFullPath = join(latticeDir, indexRelPath);
     let content: string;
@@ -573,16 +623,22 @@ export async function checkIndex(
       const relDir = dir === '' ? basename(latticeDir) + '/' : dir + '/';
       errors.push({
         dir: relDir,
-        message: `missing index file "${indexRelPath}" — create it with a directory listing:\n\n${indexSnippet(children)}`,
-        snippet: indexSnippet(children),
+        message: `missing index file "${indexRelPath}" — create it with a directory listing:\n\n${indexSnippet(children, snippetContext)}`,
+        snippet: indexSnippet(children, snippetContext),
       });
       continue;
     }
 
     // Parse existing entries and validate.
-    // Listed entries are wiki link stems (no .md extension).
+    // Listed entries are wiki link stems (no .md extension), optionally
+    // qualified by their folder when sibling folders reuse the same file name.
     // Children are filesystem names (with .md for files, bare for dirs).
-    const listed = parseIndexEntries(content);
+    const listedEntries = parseIndexEntries(content);
+    const listed = new Set(
+      [...listedEntries].map((name) =>
+        indexEntryToStem(name, prefix, latticeBase),
+      ),
+    );
     const childStems = new Set(children.map(entryToStem));
     const stemToChild = new Map(children.map((c) => [entryToStem(c), c]));
     const relDir = dir === '' ? basename(latticeDir) + '/' : dir + '/';
@@ -597,14 +653,15 @@ export async function checkIndex(
     if (missing.length > 0) {
       errors.push({
         dir: relDir,
-        message: `"${indexRelPath}" is missing entries — add:\n\n${indexSnippet(missing)}`,
-        snippet: indexSnippet(missing),
+        message: `"${indexRelPath}" is missing entries — add:\n\n${indexSnippet(missing, snippetContext)}`,
+        snippet: indexSnippet(missing, snippetContext),
       });
     }
 
     const indexStem = entryToStem(indexFileName);
-    for (const name of listed) {
-      if (!childStems.has(name) && name !== indexStem) {
+    for (const name of listedEntries) {
+      const stem = indexEntryToStem(name, prefix, latticeBase);
+      if (!childStems.has(stem) && stem !== indexStem) {
         errors.push({
           dir: relDir,
           message: `"${indexRelPath}" lists "[[${name}]]" but it does not exist`,

@@ -30,6 +30,14 @@ Given a `lat.md/` directory with a subdirectory containing files but no index fi
 
 Given a `lat.md/` directory where both the root and a subdirectory have correct index files listing all visible entries, `checkIndex` returns no errors.
 
+## Passes when indexes list same-named files by qualified path
+
+Given sibling folders that each contain a same-named Markdown file, subdirectory indexes may list their own file with a folder-qualified wiki link that `checkMd` also accepts.
+
+## Suggests a qualified entry for a missing same-named file
+
+When a missing Markdown file shares its stem with another vault file, missing-entry and missing-index snippets use a fully qualified path that `checkMd` accepts.
+
 ## Detects stale subdirectory index entry
 
 Given a subdirectory index file that lists a file which does not exist on disk, `checkIndex` reports it as a stale entry.
